@@ -6,34 +6,77 @@ import datetime
 import os
 import urllib.request
 import time
+import config
 
-#This function is passed a date and will return a list of service ID's that are operating on the given date.  Will return empty list if nothing matches
+
+
+#create get all files and get minute files function
+
 
 def getTrainData():
-#trying out using time instead of datetime - why? -- "time module is principally for working with unix time stamps; expressed as a floating point number taken to be seconds since the unix epoch. the datetime module can support many of the same operations, but provides a more object oriented set of types, and also has some limited support for time zones."
+	#thank you here - https://stackoverflow.com/questions/44239822/urllib-request-urlopenurl-with-authentication
+	apiKey=config.api_key
+	apiSecret=config.api_secret
+	apiUrlBase='https://gtfsapi.metrarail.com/gtfs'
+	password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+	password_mgr.add_password(None, apiUrlBase, apiKey, apiSecret)
+	handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+	opener = urllib.request.build_opener(handler)
+	daily=86400 
+	dailyList=["/schedule/calendar","/schedule/trips","/schedule/stops","/schedule/stop_times","/raw/published.txt","/raw/schedule.zip"]
+	minutely=45
+	minutelyList=["/tripUpdates"]
 	if not os.path.exists('./traindata'):
 		os.makedirs('./traindata')
-		#get all files
-		with urllib.request.urlopen("http://maps.googleapis.com/maps/api/geocode/json?address=google") as url:
-			data = json.loads(url.read().decode())
-		with open('traindata/data.json', 'w') as outfile:
-    			json.dump(data, outfile)
-	else: 
-		t = time.time()
-		mtime=os.path.getmtime('traindata/data.json')
-		print(mtime)
-		print(t)
+	if not os.path.exists('./traindata/published.txt'):
+		for download in dailyList:
+			if download.replace("/raw/","")=="published.txt":
+				with opener.open(apiUrlBase+download) as url:
+					data=url.read().decode()
+				with open("./traindata/"+download.replace("/raw/",""),'w') as outfile:
+					outfile.write(data)
+			elif download.replace("/raw/","")=="schedule.zip":
+				with opener.open(apiUrlBase+download) as url:
+					data=url.read()
+				with open("./traindata/"+download.replace("/raw/",""),'wb') as outfile:
+					outfile.write(data)
+			else:
+				with opener.open(apiUrlBase+download) as url:
+					data = json.loads(url.read().decode())
+				with open("./traindata/"+download.replace("/schedule/","")+".json", 'w') as outfile:
+					json.dump(data, outfile)
+		#trying out using time instead of datetime - why? -- "time module is principally for working with unix time stamps; expressed as a floating point number taken to be seconds since the unix epoch. the datetime module can support many of the same operations, but provides a more object oriented set of types, and also has some limited support for time zones."
+	for download in minutelyList:
+		if not os.path.exists('./traindata'+download+'.json'):
+			with opener.open(apiUrlBase+download) as url:
+				data = json.loads(url.read().decode())
+			with open('./traindata'+download+'.json', 'w') as outfile:
+    				json.dump(data, outfile)
+			print("no file found, downloaded")
+		else: 
+			curtime = time.time()
+			mtime=os.path.getmtime('./traindata'+download+'.json')
+			if mtime < curtime-minutely:
+				print("need new file I will  download")
+				with opener.open(apiUrlBase+download) as url:
+					data = json.loads(url.read().decode())
+				with open('./traindata'+download+'.json', 'w') as outfile:
+					json.dump(data, outfile)
+			else:
+				print("Didn't need new file, no download")
+			print(mtime,curtime)
 		#check for file creation times
 
 
 
+#This function is passed a date and will return a list of service ID's that are operating on the given date.  Will return empty list if nothing matches
 def getTodayServiceIdList(date):
         #date the given day of the week as a word and string (i.e. wednesday, thursday)
 	dayofweek=date.strftime("%A").lower()
         #get today's date in format YYYYMMDD (i.e. 20180412) so we can do simple math on the feed's given date
 	compatDate=date.strftime("%Y%m%d").lower()
         #open the calendar.json file we get from our source
-	with open('calendar.json') as cal_file:    
+	with open('./traindata/calendar.json') as cal_file:    
 		calendar = json.load(cal_file)
 
 	mylist=[]
@@ -50,7 +93,7 @@ def getTodayServiceIdList(date):
 
 def getValidTrips(serviceIdList,dstStationList):
 	#{  "route_id": "UP-W",  "service_id": "C3",  "trip_id": "UP-W_UW517_V7_C",  "trip_headsign": "Elburn",  "block_id": "",  "shape_id": "UP-W_OB_1",  "direction_id": 0  }
-	with open('trips.json') as trips_file:
+	with open('./traindata/trips.json') as trips_file:
 		trips = json.load(trips_file)
 	mylist=[]
 	for trip in trips:
@@ -63,10 +106,10 @@ def getValidTrips(serviceIdList,dstStationList):
     
 def getStopTimes(tripIdList,stopsList):
 #{"trip_id":"BNSF_BN1200_V1_A","arrival_time":"04:30:00","departure_time":"04:30:00","stop_id":"AURORA","stop_sequence":1,"pickup_type":0,"drop_off_type":0,"center_boarding":0,"south_boarding":0,"bikes_allowed":1,"notice":0}
-	with open('stop_times.json') as stops_file:
+	with open('./traindata/stop_times.json') as stops_file:
 		stops = json.load(stops_file)
 	#open trip updates file.  I don't fully understand this file, but it seems to have a temporal element to it. I think it may only contain trains that have left the station and not yet arrived.  somthing like that.
-	with open('tripUpdates.json') as updates_file:
+	with open('./traindata/tripUpdates.json') as updates_file:
 		updates = json.load(updates_file)
 	mylist=[]
 	for stop in stops:	
@@ -133,7 +176,7 @@ stations=["Millennium Station"]
 tripslist=getValidTrips(servicelist,stations)
 stoplist=["18TH-UP", "MCCORMICK"]
 poop=getStopTimes(tripslist,stoplist)
-nextlist=getUpCommingTrains(poop,"360",today)
+nextlist=getUpCommingTrains(poop,"60",today)
 pprint(nextlist)
 getTrainData()
 #print(json.dumps(poop))
