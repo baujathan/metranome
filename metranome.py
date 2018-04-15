@@ -8,11 +8,6 @@ import urllib.request
 import time
 import config
 
-
-
-#create get all files and get minute files function
-
-
 def getTrainData():
 	#thank you here - https://stackoverflow.com/questions/44239822/urllib-request-urlopenurl-with-authentication
 	apiKey=config.api_key
@@ -26,9 +21,30 @@ def getTrainData():
 	dailyList=["/schedule/calendar","/schedule/trips","/schedule/stops","/schedule/stop_times","/raw/published.txt","/raw/schedule.zip"]
 	minutely=45
 	minutelyList=["/tripUpdates"]
+	getDailys=0
+	#time seems to be easier when you're pulling a unix file time 
+	curtime = time.time()
+
 	if not os.path.exists('./traindata'):
 		os.makedirs('./traindata')
+		print("made traindata dir")
 	if not os.path.exists('./traindata/published.txt'):
+		getDailys=1
+	elif  os.path.exists('./traindata/published.txt'):
+		with open('./traindata/published.txt', 'r') as pubfile:
+			data=pubfile.read() 
+		pubFileTime=datetime.datetime.strptime(data,"%m/%d/%Y %H:%M:%S %p")
+		with opener.open(apiUrlBase+"/raw/published.txt") as url:
+			data=url.read().decode()
+		pubUrlTime=datetime.datetime.strptime(data,"%m/%d/%Y %H:%M:%S %p")
+		mtime=os.path.getmtime('./traindata/published.txt')
+		if pubUrlTime>pubFileTime or mtime<curtime-daily:	
+			getDailys=1
+			with open("./traindata/published.txt", "w") as outfile:
+				outfile.write(data)
+			dailyList.remove("/raw/published.txt")
+			print('Need to get new dailys')
+	if getDailys==1:
 		for download in dailyList:
 			if download.replace("/raw/","")=="published.txt":
 				with opener.open(apiUrlBase+download) as url:
@@ -45,28 +61,28 @@ def getTrainData():
 					data = json.loads(url.read().decode())
 				with open("./traindata/"+download.replace("/schedule/","")+".json", 'w') as outfile:
 					json.dump(data, outfile)
-		#trying out using time instead of datetime - why? -- "time module is principally for working with unix time stamps; expressed as a floating point number taken to be seconds since the unix epoch. the datetime module can support many of the same operations, but provides a more object oriented set of types, and also has some limited support for time zones."
+		print('Got Daily File Refresh')
+	else:
+		print("Daily files are up to date")
+
 	for download in minutelyList:
 		if not os.path.exists('./traindata'+download+'.json'):
 			with opener.open(apiUrlBase+download) as url:
 				data = json.loads(url.read().decode())
 			with open('./traindata'+download+'.json', 'w') as outfile:
     				json.dump(data, outfile)
-			print("no file found, downloaded")
+			print("no tripUpdate file there, so its been downloaded")
 		else: 
-			curtime = time.time()
 			mtime=os.path.getmtime('./traindata'+download+'.json')
 			if mtime < curtime-minutely:
-				print("need new file I will  download")
 				with opener.open(apiUrlBase+download) as url:
 					data = json.loads(url.read().decode())
 				with open('./traindata'+download+'.json', 'w') as outfile:
 					json.dump(data, outfile)
+				print("New tripUpdate file needed, so its been downloaded")
 			else:
-				print("Didn't need new file, no download")
+				print("tripUpdate file is up to date, no download")
 			print(mtime,curtime)
-		#check for file creation times
-
 
 
 #This function is passed a date and will return a list of service ID's that are operating on the given date.  Will return empty list if nothing matches
@@ -153,7 +169,6 @@ def getUpCommingTrains(trips,minutesout,date):
 		else:
 			newHourFinal=testTime
 		departTimeString=newHourFinal+":"+trip['departure_time'].split(':')[1]+":"+trip['departure_time'].split(':')[2]+":"+timeTail
-		#print(departTimeString)
 		departTime=datetime.datetime.strptime(departTimeString,"%H:%M:%S:%Y%m%d") #format departure_time : "06:23:00"
 		if departTime < now+datetime.timedelta(minutes=minutesForward) and departTime > now-datetime.timedelta(minutes=minutesPast):
 			if trip['update'] is not None:
@@ -162,25 +177,30 @@ def getUpCommingTrains(trips,minutesout,date):
 						trip['delay']=stop['departure']['delay']
 			else:
 				trip['delay']=0
-#			print(departTime,departTime+datetime.timedelta(seconds=trip['delay']))
 			mylist.append({'trip_id':trip['trip_id'],'stop_id':trip['stop_id'],'depart_time':departTime+datetime.timedelta(seconds=trip['delay']),'scheduled_depart_time':departTime})	
 	return mylist
-#		print(departTime,trip['update'])
-		#print(trip)
-# datetime.now() - timedelta(seconds=60)
 
+#Manually settings destination station and pickup stations care about
+destStations=["Millennium Station"]
+pickupStops=["18TH-UP", "MCCORMICK"]
+
+#How many minutes our should we show trains for?
+minutesLater="180"
+
+#get current time for passing to functions 
 today = datetime.datetime.now()
+#manually override time for testing with below, adjust time as needed 
 #today = datetime.datetime.strptime("2018-04-13 17:40:00","%Y-%m-%d %H:%M:%S")
-servicelist=getTodayServiceIdList(today)
-stations=["Millennium Station"]
-tripslist=getValidTrips(servicelist,stations)
-stoplist=["18TH-UP", "MCCORMICK"]
-poop=getStopTimes(tripslist,stoplist)
-nextlist=getUpCommingTrains(poop,"60",today)
-pprint(nextlist)
-getTrainData()
-#print(json.dumps(poop))
-#print(tripslist)
 
-    #for key, value in trip.items():
-    #   print (key, value)
+#check if there is new train data
+getTrainData()
+
+#figure out stuff 
+servicelist=getTodayServiceIdList(today)
+tripslist=getValidTrips(servicelist,destStations)
+stopTimes=getStopTimes(tripslist,pickupStops)
+nextTrains=getUpCommingTrains(stopTimes,minutesLater,today)
+
+#print results
+pprint(nextTrains)
+#print(json.dumps(nextTrains))
