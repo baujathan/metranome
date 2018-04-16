@@ -1,5 +1,5 @@
 # Metranome
-Because this was the first word I could think of that had Metra in the name. Perhaps I'll change it with something that makes sense.  
+Because this was the first word I could think of that had Metra in it. Perhaps I'll change it with something that makes sense.  
 
 ## What it do
 This polls [Metra's api](https://metrarail.com/developers/metra-gtfs-api) to schedule info and real-time updates and then will print out upcoming trips for given stops and destinations.   
