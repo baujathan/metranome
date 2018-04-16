@@ -8,15 +8,14 @@ import urllib.request
 import time
 import config
 
+#-------------------------------Get New Data from Metra api-----------------------------------#
+# hobbled little bit that checks if there are new files up or files that are too old locally and gets new ones
+# most files should only be updates if there is a new schedule publish time or if the files are > 1 day old.  Sort of redundant I supposed, but whatever
 def getTrainData():
-	#thank you here - https://stackoverflow.com/questions/44239822/urllib-request-urlopenurl-with-authentication
+	#use config to store api keys and secrets. Need to make config.py file in the same dir as the code with api_key and api_secret params
 	apiKey=config.api_key
 	apiSecret=config.api_secret
-	apiUrlBase='https://gtfsapi.metrarail.com/gtfs'
-	password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
-	password_mgr.add_password(None, apiUrlBase, apiKey, apiSecret)
-	handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
-	opener = urllib.request.build_opener(handler)
+	apiUrlBase='https://gtfsapi.metrarail.com/gtfs'#Metra api base url path
 	daily=86400 
 	dailyList=["/schedule/calendar","/schedule/trips","/schedule/stops","/schedule/stop_times","/raw/published.txt","/raw/schedule.zip"]
 	minutely=45
@@ -24,8 +23,15 @@ def getTrainData():
 	getDailys=0
 	#time seems to be easier when you're pulling a unix file time 
 	curtime = time.time()
-
-	if not os.path.exists('./traindata'):
+	
+	#thank you here for help with this how to do this - https://stackoverflow.com/questions/44239822/urllib-request-urlopenurl-with-authentication
+	#great auth realm for series of requests that my follow form here
+	password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+	password_mgr.add_password(None, apiUrlBase, apiKey, apiSecret)
+	handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+	opener = urllib.request.build_opener(handler)
+	
+	if not os.path.exists('./traindata'):#gave up on not hardcoding thigs, maybe later
 		os.makedirs('./traindata')
 		print("made traindata dir")
 	if not os.path.exists('./traindata/published.txt'):
@@ -79,11 +85,10 @@ def getTrainData():
 					data = json.loads(url.read().decode())
 				with open('./traindata'+download+'.json', 'w') as outfile:
 					json.dump(data, outfile)
-				print("New tripUpdate file needed, so its been downloaded")
+				print("New tripUpdate file needed, so its been downloaded"+" It was "+str(curtime-mtime)+" seconds old")
 			else:
 				print("tripUpdate file is up to date, no download")
 			print(mtime,curtime)
-
 
 #This function is passed a date and will return a list of service ID's that are operating on the given date.  Will return empty list if nothing matches
 def getTodayServiceIdList(date):
