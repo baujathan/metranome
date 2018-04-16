@@ -15,5 +15,6 @@ Made this for a home infoboard so I could have display that came on in the morni
 api_key = '<key here>'
 api_secret = '<secret here>'
 ```
+* update with relevant information for your use and do something useful for yourself with the outputs.  In current state, its probably not immediately useful for anyone. 
 
 
