@@ -180,6 +180,15 @@ def getUpCommingTrains(trips,minutesout,date):
 				for stop in trip['update']['trip_update']['stop_time_update']:
 					if stop['stop_id']==trip['stop_id']:
 						trip['delay']=stop['departure']['delay']
+					else:
+						#not sure if this will cause misreporting, but it seems to be needed because a trip update file may not have full update information for each stop
+						#So, if the stop we're looking for is not in the trip update, just assume there was a 0 delay. 
+						#This will probably be confusing since after a train has passed as top, it will get removed from tripUpdates.json.  Since we can still report 
+						#trains that have just passed, a delay will dissapear and go to zero, but the next top will still show the delay. 
+						#The train doesn't have an overall delay value so the next best thing would be to change this to be filled with the delay of the nearest stop
+						#on the list or perhaps the final stop arrival time.  Not going to do that now, so it's gonna be zero... Its a little silly, but 
+						#the static destination station I have (i.e. Millennium Station) does not match with the tripUpdate name for it which is MILLENNIUM"
+						trip['delay']=0
 			else:
 				trip['delay']=0
 			mylist.append({'trip_id':trip['trip_id'],'stop_id':trip['stop_id'],'depart_time':departTime+datetime.timedelta(seconds=trip['delay']),'scheduled_depart_time':departTime})	
@@ -207,5 +216,10 @@ stopTimes=getStopTimes(tripslist,pickupStops)
 nextTrains=getUpCommingTrains(stopTimes,minutesLater,today)
 
 #print results
-pprint(nextTrains)
+
+nownow = datetime.datetime.now()
+for train in nextTrains:
+	timeTilTrain=train['depart_time']-nownow
+	print(train['stop_id']," in ",int(timeTilTrain.total_seconds()/60)," minutes")
+#pprint(nextTrains)
 #print(json.dumps(nextTrains))
