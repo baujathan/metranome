@@ -7,6 +7,11 @@ import os
 import urllib.request
 import time
 import config
+import warnings
+import humanfriendly
+
+warnings.filterwarnings("ignore", category=UserWarning, module='urllib')
+
 
 #-------------------------------Get New Data from Metra api-----------------------------------#
 # hobbled little bit that checks if there are new files up or files that are too old locally and gets new ones
@@ -19,6 +24,7 @@ def getTrainData():
 	daily=86400 
 	dailyList=["/schedule/calendar","/schedule/trips","/schedule/stops","/schedule/stop_times","/raw/published.txt","/raw/schedule.zip"]
 	minutely=45
+	checkInterval=1800
 	minutelyList=["/tripUpdates"]
 	getDailys=0
 	#time seems to be easier when you're pulling a unix file time 
@@ -40,16 +46,25 @@ def getTrainData():
 		with open('./traindata/published.txt', 'r') as pubfile:
 			data=pubfile.read() 
 		pubFileTime=datetime.datetime.strptime(data,"%m/%d/%Y %H:%M:%S %p")
-		with opener.open(apiUrlBase+"/raw/published.txt") as url:
-			data=url.read().decode()
-		pubUrlTime=datetime.datetime.strptime(data,"%m/%d/%Y %H:%M:%S %p")
 		mtime=os.path.getmtime('./traindata/published.txt')
-		if pubUrlTime>pubFileTime or mtime<curtime-daily:	
-			getDailys=1
-			with open("./traindata/published.txt", "w") as outfile:
-				outfile.write(data)
-			dailyList.remove("/raw/published.txt")
-			print('Need to get new dailys')
+		if os.path.exists('./traindata/published_check.txt'):
+			mtimeCheck=os.path.getmtime('./traindata/published_check.txt')
+		else:
+			mtimeCheck=mtime
+		
+		#if checkInterval<curtime-float(pubFileTime.strftime('%s')):
+		if checkInterval<curtime-mtimeCheck:
+			with open("./traindata/published_check.txt", "w") as outfile:
+				outfile.write(str(curtime))
+			with opener.open(apiUrlBase+"/raw/published.txt") as url:
+				data=url.read().decode()
+			pubUrlTime=datetime.datetime.strptime(data,"%m/%d/%Y %H:%M:%S %p")
+			if pubUrlTime>pubFileTime or mtime<curtime-daily:	
+				getDailys=1
+				with open("./traindata/published.txt", "w") as outfile:
+					outfile.write(data)
+				dailyList.remove("/raw/published.txt")
+				print('Need to get new dailys')
 	if getDailys==1:
 		for download in dailyList:
 			if download.replace("/raw/","")=="published.txt":
@@ -88,7 +103,6 @@ def getTrainData():
 				print("New tripUpdate file needed, so its been downloaded"+" It was "+str(curtime-mtime)+" seconds old")
 			else:
 				print("tripUpdate file is up to date, no download")
-			print(mtime,curtime)
 
 #This function is passed a date and will return a list of service ID's that are operating on the given date.  Will return empty list if nothing matches
 def getTodayServiceIdList(date):
@@ -192,7 +206,13 @@ def getUpCommingTrains(trips,minutesout,date):
 			else:
 				trip['delay']=0
 			mylist.append({'trip_id':trip['trip_id'],'stop_id':trip['stop_id'],'depart_time':departTime+datetime.timedelta(seconds=trip['delay']),'scheduled_depart_time':departTime})	
-	return mylist
+
+	sort_on = "depart_time"
+	sortTemp = [(mydict[sort_on], mydict) for mydict in mylist]
+	sortTemp.sort()
+	mySortedList = [mydict for (key, mydict) in sortTemp]
+
+	return mySortedList
 
 #Manually settings destination station and pickup stations care about
 destStations=["Millennium Station"]
@@ -215,11 +235,17 @@ tripslist=getValidTrips(servicelist,destStations)
 stopTimes=getStopTimes(tripslist,pickupStops)
 nextTrains=getUpCommingTrains(stopTimes,minutesLater,today)
 
-#print results
+#print(nextTrains)
+#pprint(nextTrains)
 
+dak=[]
 nownow = datetime.datetime.now()
 for train in nextTrains:
 	timeTilTrain=train['depart_time']-nownow
-	print(train['stop_id']," in ",int(timeTilTrain.total_seconds()/60)," minutes")
-#pprint(nextTrains)
-#print(json.dumps(nextTrains))
+	print(train['stop_id']," in ",round(timeTilTrain.total_seconds()/60)," minutes",nownow.strftime('%H%M%S'),train['depart_time'].strftime('%H%M%S'))
+	dak.append({'value':train['stop_id']+' in '+humanfriendly.format_timespan(round(timeTilTrain.total_seconds()),max_units=2),'title':'Trains to Millennium Station','subtitle':"schd: "+str(train['depart_time'].strftime("%H:%M %p"))})
+dak_json=json.dumps(dak)
+
+#pprint(dak)
+#pprint(dak_json)
+print(json.dumps(dak, indent=4, sort_keys=True))
